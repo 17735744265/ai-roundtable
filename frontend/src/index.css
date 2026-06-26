@@ -1,0 +1,153 @@
+@import "tailwindcss";
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC',
+    'Microsoft YaHei', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #020617;
+  color: #e2e8f0;
+}
+
+#root {
+  min-height: 100vh;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Broadcast Studio Animations
+   ═══════════════════════════════════════════════════════ */
+
+/* Breathing light */
+@keyframes breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
+  50%      { box-shadow: 0 0 0 8px rgba(59, 130, 246, 0); }
+}
+@keyframes breathe-moderator {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.5); }
+  50%      { box-shadow: 0 0 0 8px rgba(245, 158, 11, 0); }
+}
+.avatar-breathing          { animation: breathe 2s ease-in-out infinite; }
+.avatar-breathing-moderator { animation: breathe-moderator 2s ease-in-out infinite; }
+
+/* Message slide-in */
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.message-enter { animation: slideIn 0.4s ease-out; }
+
+/* On-air pulse ring */
+@keyframes onAirPulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.6; transform: scale(1.15); }
+}
+.on-air-dot { animation: onAirPulse 1.5s ease-in-out infinite; }
+
+/* Status dot pulse */
+@keyframes statusPulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.3; }
+}
+.status-preparing { animation: statusPulse 0.8s ease-in-out infinite; }
+
+/* Studio scan line effect (subtle) */
+@keyframes scanLine {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 100vh; }
+}
+.studio-bg {
+  background-image:
+    repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(59,130,246,0.008) 2px, rgba(59,130,246,0.008) 4px);
+  background-size: 100% 4px;
+  animation: scanLine 8s linear infinite;
+}
+
+/* Glow text for host speaking */
+@keyframes textGlow {
+  0%, 100% { text-shadow: 0 0 0 rgba(245, 158, 11, 0); }
+  50%      { text-shadow: 0 0 8px rgba(245, 158, 11, 0.3); }
+}
+.host-speaking { animation: textGlow 2s ease-in-out infinite; }
+
+/* ═══════════════════════════════════════════════════════
+   Independent Scroll Containers
+   ═══════════════════════════════════════════════════════ */
+.scroll-container {
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  /* Prevent scroll chaining */
+  overscroll-behavior: contain;
+}
+
+/* Flex-based layout for studio: header + main + footer fill viewport */
+.studio-layout {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.studio-header  { flex-shrink: 0; }
+.studio-main    { flex: 1; min-height: 0; display: flex; overflow: hidden; }
+.studio-footer  { flex-shrink: 0; }
+
+/* Sidebar independent scroll */
+.studio-sidebar {
+  flex-shrink: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* Main transcript area */
+.studio-transcript {
+  flex: 1;
+  min-width: 0;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Responsive Breakpoints
+   ═══════════════════════════════════════════════════════ */
+
+/* Narrow: < 1024px → hide sidebars, stack vertically hints */
+@media (max-width: 1023px) {
+  .studio-sidebar { display: none; }
+}
+
+/* Wide: > 1536px → show all panels with generous spacing */
+@media (min-width: 1536px) {
+  .studio-sidebar { width: 220px; }
+  .studio-transcript { max-width: 900px; margin: 0 auto; }
+}
+
+/* ═══════════════════════════════════════════════════════
+   Scrollbar Styling
+   ═══════════════════════════════════════════════════════ */
+.scroll-container::-webkit-scrollbar,
+.studio-sidebar::-webkit-scrollbar,
+.studio-transcript::-webkit-scrollbar {
+  width: 4px;
+}
+.scroll-container::-webkit-scrollbar-track,
+.studio-sidebar::-webkit-scrollbar-track,
+.studio-transcript::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-container::-webkit-scrollbar-thumb,
+.studio-sidebar::-webkit-scrollbar-thumb,
+.studio-transcript::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 2px;
+}
+.scroll-container::-webkit-scrollbar-thumb:hover,
+.studio-sidebar::-webkit-scrollbar-thumb:hover,
+.studio-transcript::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+/* ═══════════════════════════════════════════════════════
+   Responsive Home Page
+   ═══════════════════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .home-grid { grid-template-columns: 1fr; }
+}
