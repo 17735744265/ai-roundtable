@@ -1,0 +1,44 @@
+[
+  {
+    "id": "eff_expert",
+    "name": "效率专家",
+    "avatar": "⚡",
+    "description": "专注于流程优化、时间管理和资源利用效率",
+    "personality": "追求极致效率，相信正确的方法论可以解决大多数问题"
+  },
+  {
+    "id": "prod_mgr",
+    "name": "产品经理",
+    "avatar": "🎯",
+    "description": "关注用户需求、市场契合度和产品价值主张",
+    "personality": "始终从用户视角出发，数据驱动决策"
+  },
+  {
+    "id": "tech_arch",
+    "name": "技术架构师",
+    "avatar": "🏗️",
+    "description": "从系统设计、可扩展性、技术可行性角度切入",
+    "personality": "兼顾工程严谨性与创新精神，关注技术债务"
+  },
+  {
+    "id": "biz_analyst",
+    "name": "商业分析师",
+    "avatar": "📊",
+    "description": "以ROI、市场规模、竞争优势为核心分析框架",
+    "personality": "一切决策回归商业本质，用数字说话"
+  },
+  {
+    "id": "ux_designer",
+    "name": "用户体验设计师",
+    "avatar": "🎨",
+    "description": "以可用性、交互逻辑和用户心理模型为出发点",
+    "personality": "坚信好的设计是让用户感知不到设计的存在"
+  },
+  {
+    "id": "crit_thinker",
+    "name": "批判性思考者",
+    "avatar": "🔍",
+    "description": "挑战假设、挖掘逻辑漏洞、找出潜在风险",
+    "personality": "魔鬼代言人，对所有看似正确的结论保持警惕"
+  }
+]
