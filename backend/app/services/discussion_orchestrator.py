@@ -140,32 +140,47 @@ async def host_intro_node(state: DiscussionState, config: RunnableConfig | None 
     sid = state["session_id"]
     seq = state["sequence"] + 1
 
-    # Update host status
+    # Push phase_start + status IMMEDIATELY (before LLM call)
     status = dict(state["expert_status"])
-    sse_events = [_sse("phase_start", {"phase": "opening", "round": 0, "label": "主持人开场"})]
-    sse_events.append(_sse("expert_status", {"status": {**status, "__host__": {"state": "speaking", "focus": "准备开场"}}}))
+    sse_events = [
+        _sse("phase_start", {"phase": "opening", "round": 0, "label": "主持人开场"}),
+        _sse("expert_status", {"status": {**status, "__host__": {"state": "speaking", "focus": "准备开场"}}}),
+    ]
+
+    # Stream host intro for instant first words
+    msg_id = f"intro-{seq}"
+    sse_events.append(_sse("message_start", {
+        "id": msg_id, "session_id": sid,
+        "phase": "opening", "round": 0,
+        "speaker_id": host["id"], "speaker_name": host["name"],
+    }))
 
     experts_info = format_experts_info(experts)
-
+    full_text = ""
     try:
-        text = await llm.generate(
+        async for chunk in llm.generate_stream(
             system_prompt=HOST_SYSTEM_PROMPT,
             user_message=build_opening_prompt(topic, experts_info),
-            temperature=0.8, max_tokens=300,
-        )
+            temperature=0.8, max_tokens=200,  # Faster: 200 tokens
+        ):
+            full_text += chunk
+            sse_events.append(_sse("message_chunk", {
+                "id": msg_id, "content_delta": chunk,
+                "speaker_id": host["id"],
+            }))
     except LLMAPIException:
         return {"error": "HOST_INTRO failed", "sse_events": sse_events}
 
+    text = full_text.strip() or "各位嘉宾，欢迎来到今天的圆桌讨论。"
     if db:
         msg = await save_message(db, sid, "opening", 0, host["id"], host["name"], text, seq)
         md = _msg_dict(msg)
     else:
-        md = {"id": "intro", "session_id": sid, "phase": "opening", "round": 0,
+        md = {"id": msg_id, "session_id": sid, "phase": "opening", "round": 0,
               "speaker_id": host["id"], "speaker_name": host["name"],
               "content": text, "sequence": seq, "created_at": ""}
 
     sse_events.append(_sse("moderator_opening", md))
-    # Reset host status
     sse_events.append(_sse("expert_status", {"status": {**status, "__host__": {"state": "idle", "focus": "聆听专家发言"}}}))
 
     return {
@@ -223,7 +238,7 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
                 user_message=build_expert_decide_prompt(
                     e["name"], e["title"], e["stance"], topic, transcript,
                 ),
-                temperature=0.7, max_tokens=250,
+                temperature=0.7, max_tokens=150,
             )
             decision = _parse_json(raw, {"should_speak": False, "urgency": 0, "focus": "", "content": ""})
             return {"expert": e, "decision": decision}
@@ -291,7 +306,7 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
                 async for chunk in llm.generate_stream(
                     system_prompt=sys_prompt,
                     user_message=user_prompt,
-                    temperature=0.85, max_tokens=300,
+                    temperature=0.85, max_tokens=200,
                 ):
                     full_content += chunk
                     sse_events.append(_sse("message_chunk", {
@@ -332,7 +347,7 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
                         list(state.get("consensus_points", [])),
                         list(state.get("divergence_points", [])),
                     ),
-                    temperature=0.7, max_tokens=200,
+                    temperature=0.7, max_tokens=150,
                 )
                 if connect_text and connect_text.strip():
                     status["__host__"] = {"state": "speaking", "focus": "串联观点中..."}
@@ -398,7 +413,7 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
             raw = await llm.generate(
                 system_prompt=HOST_SYSTEM_PROMPT,
                 user_message=build_host_followup_prompt(topic, transcript),
-                temperature=0.7, max_tokens=200,
+                temperature=0.7, max_tokens=150,
             )
             decision = _parse_json(raw, {"action": "advance", "target": "", "content": "让我们换个角度来看这个问题。"})
         except LLMAPIException:
@@ -463,24 +478,37 @@ async def host_summary_node(state: DiscussionState, config: RunnableConfig | Non
     divergence = list(state.get("divergence_points", []))
 
     sse_events = [_sse("phase_start", {"phase": "summary", "round": 0, "label": "主持人总结"})]
-
     transcript = format_transcript(all_msgs, last_n=999)
 
+    # Stream summary for instant first words
+    msg_id = f"summary-{seq}"
+    sse_events.append(_sse("message_start", {
+        "id": msg_id, "session_id": sid, "phase": "summary", "round": 0,
+        "speaker_id": host["id"], "speaker_name": host["name"],
+    }))
+
+    full_text = ""
     try:
-        text = await llm.generate(
+        async for chunk in llm.generate_stream(
             system_prompt=HOST_SYSTEM_PROMPT,
             user_message=build_summary_prompt(topic, transcript, consensus, divergence),
-            temperature=0.7, max_tokens=800,
-        )
+            temperature=0.7, max_tokens=600,
+        ):
+            full_text += chunk
+            sse_events.append(_sse("message_chunk", {
+                "id": msg_id, "content_delta": chunk,
+                "speaker_id": host["id"],
+            }))
     except LLMAPIException:
-        text = "感谢各位嘉宾的深入讨论。由于技术原因，本次无法生成完整总结。"
+        full_text = "感谢各位嘉宾的深入讨论。"
 
+    text = full_text.strip() or "感谢各位嘉宾的深入讨论。"
     if db:
         msg = await save_message(db, sid, "summary", 0, host["id"], host["name"], text, seq)
         md = _msg_dict(msg)
         await complete_session(db, sid)
     else:
-        md = {"id": "summary", "session_id": sid, "phase": "summary", "round": 0,
+        md = {"id": msg_id, "session_id": sid, "phase": "summary", "round": 0,
               "speaker_id": host["id"], "speaker_name": host["name"],
               "content": text, "sequence": seq, "created_at": ""}
 
