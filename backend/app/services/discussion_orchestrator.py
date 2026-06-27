@@ -235,7 +235,7 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
     # ── Step 2: Pick highest urgency expert ──────────────
     candidates = []
     for r in results:
-        if r and r["decision"].get("should_speak") and r["decision"].get("urgency", 0) >= 5:
+        if r and r["decision"].get("should_speak") and r["decision"].get("urgency", 0) >= 4:
             candidates.append(r)
 
     # Sort by urgency (descending), take top 2
@@ -343,10 +343,10 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
             except Exception:
                 pass
 
-        # ── Consensus check every ~3 rounds ──────────
+        # ── Consensus check every round (continuous) ──
         new_consensus = []
         new_divergence = []
-        if (state["current_round"] + 1) % 3 == 0:
+        if (state["current_round"] + 1) % 1 == 0:  # every round
             try:
                 check_prompt = build_consensus_check_prompt(
                     topic, format_transcript(all_msgs + all_md, last_n=15),

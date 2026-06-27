@@ -40,7 +40,7 @@ class Settings:
     OPENAI_MODEL: str = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
     # Discussion config
-    FREE_DISCUSSION_ROUNDS: int = int(os.getenv("FREE_DISCUSSION_ROUNDS", "30"))
+    FREE_DISCUSSION_ROUNDS: int = int(os.getenv("FREE_DISCUSSION_ROUNDS", "40"))
 
     # CORS
     CORS_ORIGINS: list[str] = os.getenv(
