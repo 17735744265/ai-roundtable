@@ -120,6 +120,24 @@ body {
   .studio-transcript { max-width: 900px; margin: 0 auto; }
 }
 
+/* Consensus item stagger-enter animation */
+@keyframes consensusEnter {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+.consensus-item-enter {
+  animation: consensusEnter 0.35s ease-out both;
+}
+
+/* Expert status highlight flash */
+@keyframes statusFlash {
+  0%   { background-color: rgba(59,130,246,0.2); }
+  100% { background-color: transparent; }
+}
+.expert-status-changed {
+  animation: statusFlash 0.6s ease-out;
+}
+
 /* ═══════════════════════════════════════════════════════
    Scrollbar Styling
    ═══════════════════════════════════════════════════════ */

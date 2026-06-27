@@ -14,12 +14,18 @@ export function RoundtableRoom({ sessionId }: RoundtableRoomProps) {
   const { state, processSSEEvent } = useRoundtable();
   const [lastSpeakerId, setLastSpeakerId] = useState<string | null>(null);
   const [newMsgIds, setNewMsgIds] = useState<Set<string>>(new Set());
+  const [changedExperts, setChangedExperts] = useState<Set<string>>(new Set());
   const [guestMeta, setGuestMeta] = useState<Record<string, { name: string; title: string; color: string; avatar: string }>>({});
   const transcriptRef = useRef<HTMLDivElement>(null);
 
   const { connectionState } = useSSE(sessionId, {
     onEvent: (event: SSEEvent) => {
       processSSEEvent(event);
+      if (event.type === 'expert_status' && event.data.status) {
+        const changed = Object.keys(event.data.status);
+        setChangedExperts(new Set(changed));
+        setTimeout(() => setChangedExperts(new Set()), 800);
+      }
       if (event.type === 'moderator_opening' || event.type === 'free_discussion' || event.type === 'moderator_summary') {
         setLastSpeakerId(event.data.speaker_id || null);
         if (event.data.id) {
@@ -99,7 +105,7 @@ export function RoundtableRoom({ sessionId }: RoundtableRoomProps) {
               const borderColor = s === 'speaking' ? 'border-blue-500/20 bg-blue-500/5' : s === 'ready' ? 'border-emerald-500/10 bg-emerald-500/3' : 'border-transparent';
 
               return (
-                <div key={id} className={`px-3 py-2.5 border-b border-slate-800/30 transition-all duration-300 ${borderColor}`}>
+                <div key={id} className={`px-3 py-2.5 border-b border-slate-800/30 transition-all duration-300 ${borderColor} ${changedExperts.has(id) ? 'expert-status-changed' : ''}`}>
                   <div className="flex items-center gap-1.5 mb-0.5">
                     <div className={`w-1.5 h-1.5 rounded-full ${dotColor}`}
                          style={s === 'speaking' ? { boxShadow: `0 0 6px ${m.color}` } : {}} />
@@ -226,8 +232,11 @@ export function RoundtableRoom({ sessionId }: RoundtableRoomProps) {
 
         {/* ── Consensus Sidebar ── */}
         <aside className="studio-sidebar w-48 xl:w-56 flex-shrink-0 border-l border-slate-800/50 bg-slate-950/50 hidden xl:flex flex-col">
-          <div className="px-3 py-2 border-b border-slate-800/50">
-            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest text-center">实时追踪</p>
+          <div className="px-3 py-2 border-b border-slate-800/50 flex items-center justify-between">
+            <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">实时追踪</p>
+            <span className="text-[9px] text-slate-600">
+              {(state.consensusPoints.length + state.divergencePoints.length) || ''}
+            </span>
           </div>
           <div className="flex-1 scroll-container p-2 space-y-2">
             {state.consensusPoints.length === 0 && state.divergencePoints.length === 0 && (
@@ -235,17 +244,29 @@ export function RoundtableRoom({ sessionId }: RoundtableRoomProps) {
             )}
             {state.consensusPoints.length > 0 && (
               <div className="p-2 rounded-lg bg-emerald-500/5 border border-emerald-500/10">
-                <div className="text-[10px] font-bold text-emerald-400 mb-1.5 uppercase tracking-wide">✅ 共识</div>
+                <div className="text-[10px] font-bold text-emerald-400 mb-1.5 uppercase tracking-wide">
+                  ✅ 共识 ({state.consensusPoints.length})
+                </div>
                 {state.consensusPoints.map((p, i) => (
-                  <div key={i} className="text-[10px] text-emerald-300/60 flex gap-1 mb-0.5"><span>·</span>{p}</div>
+                  <div key={i}
+                    className="text-[10px] text-emerald-300/60 flex gap-1 mb-0.5 consensus-item-enter"
+                    style={{ animationDelay: `${i * 50}ms` }}>
+                    <span className="text-emerald-500">·</span>{p}
+                  </div>
                 ))}
               </div>
             )}
             {state.divergencePoints.length > 0 && (
               <div className="p-2 rounded-lg bg-orange-500/5 border border-orange-500/10">
-                <div className="text-[10px] font-bold text-orange-400 mb-1.5 uppercase tracking-wide">⚡ 分歧</div>
+                <div className="text-[10px] font-bold text-orange-400 mb-1.5 uppercase tracking-wide">
+                  ⚡ 分歧 ({state.divergencePoints.length})
+                </div>
                 {state.divergencePoints.map((p, i) => (
-                  <div key={i} className="text-[10px] text-orange-300/60 flex gap-1 mb-0.5"><span>·</span>{p}</div>
+                  <div key={i}
+                    className="text-[10px] text-orange-300/60 flex gap-1 mb-0.5 consensus-item-enter"
+                    style={{ animationDelay: `${i * 50}ms` }}>
+                    <span className="text-orange-500">·</span>{p}
+                  </div>
                 ))}
               </div>
             )}
