@@ -174,6 +174,31 @@ def build_expert_forced_speak_prompt(
 请用1-2句话(30-80字)回应。保持你的专业视角和立场。直接说话，不要JSON格式。"""
 
 
+def build_host_intervene_prompt(topic: str, transcript: str, guest_names: list[str], consensus: list[str], divergence: list[str]) -> str:
+    """Smart host intervention: LLM decides if host should follow up, connect, or stay silent."""
+    guests_str = "、".join(guest_names)
+    return f"""你是主持人。讨论话题：{topic}
+
+════════ 最近讨论 ════════
+{transcript}
+══════════════════════════════
+
+已知共识：{'; '.join(consensus) if consensus else '无'}
+已知分歧：{'; '.join(divergence) if divergence else '无'}
+
+判断是否需要介入，以JSON回复：
+```json
+{{"should_intervene": true/false, "type": "follow_up或connect或none", "target": "目标专家名或空", "content": "你要说的话(40-80字)或空"}}
+```
+
+判断标准：
+- follow_up：某专家观点模糊/缺乏论据/有矛盾未展开 → 追问ta
+- connect：2位以上专家观点有关联/碰撞 → 提炼共性或指出分歧，引导后续讨论
+- none：讨论自然流畅，无需介入
+
+规则：连续介入不超过2轮。只输出JSON。"""
+
+
 def build_consensus_check_prompt(topic: str, transcript: str, existing_c: list[str], existing_d: list[str]) -> str:
     return f"""分析以下圆桌讨论的最新进展，识别新出现的共识点和分歧点。
 

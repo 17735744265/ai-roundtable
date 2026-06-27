@@ -25,6 +25,7 @@ from app.services.prompt_manager import (
     build_opening_prompt,
     build_expert_decide_prompt,
     build_host_followup_prompt,
+    build_host_intervene_prompt,
     build_expert_forced_speak_prompt,
     build_consensus_check_prompt,
     build_summary_prompt,
@@ -47,6 +48,7 @@ class DiscussionState(TypedDict):
     host: dict              # {id, name, title, stance, avatar, color}
     experts: list[dict]     # [{id, name, title, stance, avatar, color}]
     all_guests: list[dict]  # host + experts combined
+    guest_names: list[str]  # [expert1_name, expert2_name, ...]
     current_phase: str
     current_round: int
     last_speaker_id: str
@@ -55,6 +57,7 @@ class DiscussionState(TypedDict):
     consensus_points: Annotated[list[str], operator.add]
     divergence_points: Annotated[list[str], operator.add]
     expert_status: dict     # {expert_id: {state, focus}}
+    consecutive_host_interventions: int  # track host intervention count
     total_rounds: int
     sequence: int
     error: str | None
@@ -337,57 +340,61 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
             status[expert["id"]] = {"state": "idle", "focus": "已发言，继续聆听"}
             sse_events.append(_sse("expert_status", {"status": dict(status)}))
 
-        # ── Host proactively connects ideas every 5 rounds ──
-        if (state["current_round"] + 1) % 5 == 0 and len(all_msgs + all_md) >= 3:
+        # ── Smart host intervention: LLM check every 2 rounds ──
+        consecutive_interventions = state.get("consecutive_host_interventions", 0)
+        if (state["current_round"] + 1) % 2 == 0 and consecutive_interventions < 2 and len(all_msgs + all_md) >= 3:
             try:
-                connect_text = await llm.generate(
-                    system_prompt=HOST_SYSTEM_PROMPT,
-                    user_message=build_connect_prompt(
-                        topic, all_msgs + all_md,
-                        list(state.get("consensus_points", [])),
-                        list(state.get("divergence_points", [])),
-                    ),
-                    temperature=0.7, max_tokens=150,
-                )
-                if connect_text and connect_text.strip():
-                    status["__host__"] = {"state": "speaking", "focus": "串联观点中..."}
-                    sse_events.append(_sse("expert_status", {"status": dict(status)}))
-                    sse_events.append(_sse("moderator_connect", {
-                        "id": f"host-connect-{round_num}",
-                        "session_id": sid, "phase": "free_discussion",
-                        "round": round_num + 1,
-                        "speaker_id": host["id"], "speaker_name": host["name"],
-                        "content": connect_text.strip(),
-                    }))
-                    status.pop("__host__", None)
-                    sse_events.append(_sse("expert_status", {"status": dict(status)}))
-            except Exception:
-                pass
-
-        # ── Consensus check every round (continuous) ──
-        new_consensus = []
-        new_divergence = []
-        if (state["current_round"] + 1) % 1 == 0:  # every round
-            try:
-                check_prompt = build_consensus_check_prompt(
-                    topic, format_transcript(all_msgs + all_md, last_n=15),
+                intervene_prompt = build_host_intervene_prompt(
+                    topic, format_transcript(all_msgs + all_md, last_n=10),
+                    state["guest_names"],
                     list(state.get("consensus_points", [])),
                     list(state.get("divergence_points", [])),
                 )
                 raw = await llm.generate(
-                    system_prompt="你是专业讨论分析师。只用JSON回复。",
-                    user_message=check_prompt, temperature=0.3, max_tokens=300,
+                    system_prompt=HOST_SYSTEM_PROMPT,
+                    user_message=intervene_prompt, temperature=0.7, max_tokens=150,
                 )
-                result = _parse_json(raw, {"new_consensus": [], "new_divergence": []})
-                new_consensus = result.get("new_consensus", [])
-                new_divergence = result.get("new_divergence", [])
-                if new_consensus or new_divergence:
-                    sse_events.append(_sse("consensus_update", {
-                        "new_consensus": new_consensus,
-                        "new_divergence": new_divergence,
-                        "all_consensus": list(state.get("consensus_points", [])) + new_consensus,
-                        "all_divergence": list(state.get("divergence_points", [])) + new_divergence,
+                decision = _parse_json(raw, {"should_intervene": False, "type": "none", "target": "", "content": ""})
+
+                if decision.get("should_intervene") and decision.get("content", "").strip():
+                    status["__host__"] = {"state": "speaking", "focus": "发言中..."}
+                    sse_events.append(_sse("expert_status", {"status": dict(status)}))
+
+                    msg_id = f"host-intervene-{round_num}"
+                    sse_events.append(_sse("message_start", {
+                        "id": msg_id, "session_id": sid, "phase": "free_discussion",
+                        "round": round_num + 1,
+                        "speaker_id": host["id"], "speaker_name": host["name"],
                     }))
+
+                    full = ""
+                    try:
+                        async for chunk in llm.generate_stream(
+                            system_prompt=HOST_SYSTEM_PROMPT,
+                            user_message=f"你说：{decision['content']}",
+                            temperature=0.7, max_tokens=100,
+                        ):
+                            full += chunk
+                            sse_events.append(_sse("message_chunk", {
+                                "id": msg_id, "content_delta": chunk,
+                                "speaker_id": host["id"],
+                            }))
+                    except LLMAPIException:
+                        full = decision["content"]
+
+                    content = full.strip() or decision["content"]
+                    sse_events.append(_sse("moderator_followup", {
+                        "id": msg_id, "session_id": sid, "phase": "free_discussion",
+                        "round": round_num + 1,
+                        "speaker_id": host["id"], "speaker_name": host["name"],
+                        "content": content,
+                        "followup_type": decision.get("type", "connect"),
+                    }))
+                    status.pop("__host__", None)
+                    sse_events.append(_sse("expert_status", {"status": dict(status)}))
+                    consecutive_interventions += 1
+                else:
+                    consecutive_interventions = 0  # Reset if host stays silent
             except Exception:
                 pass
 
@@ -397,10 +404,9 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
             "last_speaker_id": speakers[-1]["expert"]["id"],
             "sequence": current_seq,
             "messages": all_md,
-            "consensus_points": new_consensus,
-            "divergence_points": new_divergence,
             "sse_events": sse_events,
             "expert_status": dict(status),
+            "consecutive_host_interventions": consecutive_interventions,
         }
 
     else:
@@ -551,22 +557,24 @@ async def consensus_check_node(state: DiscussionState, config: RunnableConfig | 
                 existing_c, existing_d,
             )
             raw = await llm.generate(
-                system_prompt="你是专业讨论分析师。只用JSON回复。",
-                user_message=check_prompt, temperature=0.3, max_tokens=300,
+                system_prompt="你是专业讨论分析师。严格分析讨论中的共识与分歧，积极识别。只用JSON回复。",
+                user_message=check_prompt, temperature=0.4, max_tokens=300,
             )
             result = _parse_json(raw, {"new_consensus": [], "new_divergence": []})
             new_c = result.get("new_consensus", [])
             new_d = result.get("new_divergence", [])
+            print(f"[CONSENSUS] round={state['current_round']} c={len(new_c)} d={len(new_d)} total_c={len(existing_c)+len(new_c)} total_d={len(existing_d)+len(new_d)}")
         except Exception:
             import traceback as _tb
-            print(f"[CONSENSUS_CHECK] LLM failed at round {state['current_round']}:")
+            print(f"[CONSENSUS] ERROR round={state['current_round']}:")
             _tb.print_exc()
-            # Fallback: extract keywords from last 2 messages
             recent = all_msgs[-2:] if len(all_msgs) >= 2 else all_msgs
-            snippets = [m.get("content", "")[:20] + "..." for m in recent if m.get("content")]
+            snippets = [m.get("content", "")[:25] + "..." for m in recent if m.get("content")]
             if snippets and not existing_c:
                 new_c = [f"讨论焦点: {snippets[0]}"]
-            print(f"[CONSENSUS_CHECK] Fallback: new_c={new_c}")
+            if len(snippets) >= 2 and not existing_d:
+                new_d = [f"观点差异: {snippets[0]} vs {snippets[1]}"]
+            print(f"[CONSENSUS] Fallback c={new_c} d={new_d}")
 
     all_c = existing_c + new_c
     all_d = existing_d + new_d
@@ -669,6 +677,8 @@ async def run_discussion(
         "consensus_points": [],
         "divergence_points": [],
         "expert_status": {},
+        "guest_names": [e["name"] for e in experts] + [host["name"]],
+        "consecutive_host_interventions": 0,
         "total_rounds": settings.FREE_DISCUSSION_ROUNDS + 2,  # core discussion rounds
         "sequence": 0,
         "error": None,

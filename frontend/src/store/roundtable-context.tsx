@@ -103,6 +103,7 @@ export function RoundtableProvider({ children }: { children: React.ReactNode }) 
       case 'free_discussion':
       case 'moderator_summary':
       case 'moderator_connect':
+      case 'moderator_followup':
         dispatch({ type: 'ADD_MESSAGE', message: {
           id: event.data.id || crypto.randomUUID(),
           session_id: event.data.session_id || state.sessionId,

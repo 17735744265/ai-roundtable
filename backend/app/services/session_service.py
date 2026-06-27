@@ -39,6 +39,10 @@ async def list_sessions(
     if status_filter and status_filter != "all":
         stmt = stmt.where(Session.status == status_filter)
         count_stmt = count_stmt.where(Session.status == status_filter)
+    else:
+        # Default: exclude 'error' sessions from general listing
+        stmt = stmt.where(Session.status != "error")
+        count_stmt = count_stmt.where(Session.status != "error")
 
     count_result = await db.execute(count_stmt)
     total = count_result.scalar() or 0

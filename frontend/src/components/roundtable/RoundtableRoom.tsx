@@ -231,7 +231,7 @@ export function RoundtableRoom({ sessionId }: RoundtableRoomProps) {
         </main>
 
         {/* ── Consensus Sidebar ── */}
-        <aside className="studio-sidebar w-48 xl:w-56 flex-shrink-0 border-l border-slate-800/50 bg-slate-950/50 hidden xl:flex flex-col">
+        <aside className="studio-sidebar w-44 lg:w-48 xl:w-56 flex-shrink-0 border-l border-slate-800/50 bg-slate-950/50 hidden lg:flex flex-col">
           <div className="px-3 py-2 border-b border-slate-800/50 flex items-center justify-between">
             <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">实时追踪</p>
             <span className="text-[9px] text-slate-600">
@@ -281,16 +281,41 @@ export function RoundtableRoom({ sessionId }: RoundtableRoomProps) {
             <span>{isLive ? '💬 深度讨论中' : isCompleted ? '✅ 已结束' : state.phase === 'error' ? '⚠️ 中断' : '🔗 连接中...'}</span>
             {state.messages.length > 0 && <span>· {state.messages.length} 条</span>}
           </div>
-          <button
-            onClick={() => navigate('/')}
-            className={`px-4 py-1 rounded-lg text-[11px] font-medium transition-all ${
-              isCompleted ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' :
-              isLive ? 'bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20' :
-              'bg-slate-800 text-slate-600'
-            }`}
-          >
-            {isCompleted ? '← 返回首页' : isLive ? '⏹ 离开' : '...'}
-          </button>
+          <div className="flex items-center gap-2">
+            {/* Reset: back to home */}
+            <button onClick={() => navigate('/')}
+              className="px-3 py-1 rounded-lg text-[11px] font-medium bg-slate-800 text-slate-400 hover:bg-slate-700 transition-all">
+              🔄 重置
+            </button>
+            {/* Continue: extend discussion (only after completion) */}
+            {isCompleted && (
+              <button onClick={async () => {
+                try {
+                  const { default: api } = await import('../../api/sessions');
+                  const session = await api.fetchSession(sessionId);
+                  const newSession = await (
+                    await fetch(`/api/discussions/${sessionId}/extend`, {
+                      method: 'POST', headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify({extra_rounds: 20}),
+                    })
+                  ).json();
+                  if (newSession.data?.id) {
+                    navigate(`/roundtable/${newSession.data.id}`);
+                  }
+                } catch { navigate('/'); }
+              }}
+                className="px-4 py-1 rounded-lg text-[11px] font-medium bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 hover:bg-emerald-500/20 transition-all">
+                ▶ 继续讨论
+              </button>
+            )}
+            {/* End: leave discussion */}
+            {isLive && (
+              <button onClick={() => navigate('/')}
+                className="px-4 py-1 rounded-lg text-[11px] font-medium bg-red-500/10 border border-red-500/20 text-red-400 hover:bg-red-500/20 transition-all">
+                ⏹ 结束
+              </button>
+            )}
+          </div>
         </div>
       </footer>
     </div>

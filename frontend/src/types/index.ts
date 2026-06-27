@@ -72,6 +72,7 @@ export type SSEEventType =
   | 'moderator_opening' | 'free_discussion' | 'moderator_summary'
   | 'phase_end' | 'session_end' | 'done' | 'error'
   | 'expert_status' | 'consensus_update' | 'moderator_connect'
+  | 'moderator_followup'
   | 'message_start' | 'message_chunk';
 
 export interface SSEData {

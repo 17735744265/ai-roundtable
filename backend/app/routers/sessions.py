@@ -2,6 +2,7 @@
 
 import json
 import re
+from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
@@ -161,6 +162,40 @@ async def get_session(session_id: str, db: AsyncSession = Depends(get_db)):
             created_at=session.created_at, completed_at=session.completed_at,
         )
     )
+
+
+class ExtendRequest(BaseModel):
+    extra_rounds: int = Field(default=20, ge=5, le=50)
+
+@router.post("/discussions/{session_id}/extend", response_model=ApiResponse[SessionDetail])
+async def extend_session(session_id: str, body: ExtendRequest, db: AsyncSession = Depends(get_db)):
+    """Create a continuation session with same topic/guests but more rounds."""
+    session = await session_service.get_session(db, session_id)
+    if not session:
+        raise NotFoundException()
+
+    guests_data = json.loads(session.guest_ids)
+    host = guests_data[0] if isinstance(guests_data, list) and len(guests_data) > 0 else {}
+    experts = guests_data[1:] if isinstance(guests_data, list) else []
+
+    # Create new session with extended rounds
+    from app.config import settings
+    original_rounds = settings.FREE_DISCUSSION_ROUNDS
+    all_guests = [host] + experts
+    guests_json = json.dumps(all_guests, ensure_ascii=False)
+    new_session = await session_service.create_session_with_guests(
+        db, f"{session.topic}（续）", [g.get("id", g) if isinstance(g, dict) else g for g in [host] + experts], guests_json
+    )
+    # Temporarily increase rounds for this continuation
+    settings.FREE_DISCUSSION_ROUNDS = body.extra_rounds
+
+    return ApiResponse(data=SessionDetail(
+        id=new_session.id, topic=new_session.topic,
+        guests=[GuestBrief(id=g.get("id", ""), name=g.get("name", ""), avatar=g.get("avatar", "👤"),
+                title=g.get("title", ""), color=g.get("color", "#94A3B8")) for g in all_guests],
+        status=new_session.status, messages=[],
+        created_at=new_session.created_at, completed_at=new_session.completed_at,
+    ))
 
 
 @router.delete("/discussions/{session_id}", response_model=ApiResponse)

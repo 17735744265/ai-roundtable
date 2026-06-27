@@ -131,6 +131,18 @@ def _live_stream(session_id: str, topic: str, host: dict, experts: list[dict]) -
                     except asyncio.CancelledError: pass
         finally:
             _active_runs.discard(session_id)
+            # If session still active with 0 messages, mark as error (abandoned)
+            try:
+                from app.database import async_session as _as
+                from app.services.session_service import get_session, fail_session, get_session_message_count
+                async with _as() as cleanup_db:
+                    s = await get_session(cleanup_db, session_id)
+                    if s and s.status == "active":
+                        msg_count = await get_session_message_count(cleanup_db, session_id)
+                        if msg_count == 0:
+                            await fail_session(cleanup_db, session_id)
+            except Exception:
+                pass
 
     return StreamingResponse(
         event_generator(),
