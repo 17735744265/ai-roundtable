@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 class GuestGenerateRequest(BaseModel):
     topic: str = Field(..., min_length=1, max_length=200, description="讨论话题")
-    expert_count: int = Field(default=3, ge=2, le=5, description="专家人数(2-5)")
+    expert_count: int = Field(default=4, ge=2, le=6, description="专家人数(2-6)")
 
 class GeneratedGuest(BaseModel):
     id: str          # e.g. "expert_0"
@@ -28,7 +28,7 @@ class GuestGenerateResponse(BaseModel):
 class SessionCreate(BaseModel):
     topic: str = Field(..., min_length=1, max_length=200)
     guest_ids: list[str] = Field(default=[], description="预设嘉宾ID列表(3-6位)")
-    generated_guests: list[GeneratedGuest] = Field(default=[], description="AI生成的嘉宾对象列表")
+    generated_guests: list[GeneratedGuest] = Field(default=[], description="AI生成的嘉宾对象列表(2-6位)")
 
 
 class GuestBrief(BaseModel):

@@ -5,8 +5,8 @@ export function fetchGuests(): Promise<any[]> {
   return apiGet<any[]>('/experts');
 }
 
-export function generateGuests(topic: string): Promise<GuestGenerateResponse> {
-  return apiPost<GuestGenerateResponse>('/discussion/generate-guests', { topic });
+export function generateGuests(topic: string, expertCount: number = 4): Promise<GuestGenerateResponse> {
+  return apiPost<GuestGenerateResponse>('/discussion/generate-guests', { topic, expert_count: expertCount });
 }
 
 export function createSessionWithGuests(topic: string, generatedGuests: GeneratedGuest[]): Promise<SessionDetail> {

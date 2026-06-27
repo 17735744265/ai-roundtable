@@ -11,6 +11,8 @@ export default function HomePage() {
   // Flow state
   const [step, setStep] = useState<'input' | 'generating' | 'select' | 'starting'>('input');
   const [topic, setTopic] = useState('');
+  const [expertCount, setExpertCount] = useState(4);
+  const [showPreset, setShowPreset] = useState(false);
   const [generatedHost, setGeneratedHost] = useState<GeneratedGuest | null>(null);
   const [generatedExperts, setGeneratedExperts] = useState<GeneratedGuest[]>([]);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -29,7 +31,7 @@ export default function HomePage() {
     setError(null);
     setStep('generating');
     try {
-      const result = await generateGuests(topic.trim());
+      const result = await generateGuests(topic.trim(), expertCount);
       setGeneratedHost(result.host);
       setGeneratedExperts(result.experts);
       setSelectedIds(new Set(result.experts.map((e: GeneratedGuest) => e.id)));
@@ -124,8 +126,8 @@ export default function HomePage() {
         <section className="rounded-2xl border border-slate-700/60 bg-slate-800/20 p-6">
           <h2 className="text-lg font-semibold text-white mb-4">🚀 发起新讨论</h2>
 
-          {/* Topic input (always visible) */}
-          <div className="mb-4">
+          {/* Topic input */}
+          <div className="mb-3">
             <textarea value={topic} onChange={(e) => { setTopic(e.target.value); setStep('input'); }}
               placeholder="输入你想探讨的话题，AI将为你生成专属专家阵容..."
               maxLength={200} rows={2}
@@ -135,56 +137,70 @@ export default function HomePage() {
             <div className="text-right text-xs text-slate-500 mt-1">{topic.length}/200</div>
           </div>
 
+          {/* Expert count + Generate button */}
+          <div className="flex items-end gap-3 mb-4">
+            <div className="flex-shrink-0">
+              <label className="text-xs text-slate-400 mb-1 block">专家人数</label>
+              <div className="flex gap-1">
+                {[2, 3, 4, 5, 6].map((n) => (
+                  <button key={n} onClick={() => setExpertCount(n)}
+                    className={`w-8 h-8 rounded-lg text-xs font-medium transition-all ${
+                      expertCount === n
+                        ? 'bg-blue-500 text-white'
+                        : 'bg-slate-700/50 text-slate-400 hover:bg-slate-700'
+                    }`}>{n}</button>
+                ))}
+              </div>
+            </div>
+            <button onClick={handleGenerate} disabled={!topic.trim() || step === 'generating'}
+              className={`flex-1 py-3 rounded-xl text-sm font-semibold transition-all ${
+                topic.trim() && step !== 'generating'
+                  ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:shadow-lg active:scale-[0.98]'
+                  : 'bg-slate-700 text-slate-500 cursor-not-allowed'
+              }`}>
+              {step === 'generating' ? '🤖 AI 正在分析话题并生成专家阵容...' : `🤖 AI 生成 ${expertCount} 位专家阵容`}
+            </button>
+          </div>
+
           {error && <div className="mb-4 p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-sm">{error}</div>}
 
-          {/* Step: AI Generate → Select → Start */}
-          {(step === 'input' || step === 'generating') && (
-            <div className="space-y-3">
-              <button onClick={handleGenerate} disabled={!topic.trim() || step === 'generating'}
-                className={`w-full py-3 rounded-xl text-sm font-semibold transition-all ${
-                  topic.trim() && step !== 'generating'
-                    ? 'bg-gradient-to-r from-blue-500 to-purple-600 text-white hover:shadow-lg active:scale-[0.98]'
-                    : 'bg-slate-700 text-slate-500 cursor-not-allowed'
-                }`}>
-                {step === 'generating' ? '🤖 AI 正在分析话题并生成专家阵容...' : '🤖 AI 生成专属专家阵容'}
-              </button>
-
-              {/* Divider */}
-              <div className="flex items-center gap-3 py-2">
-                <div className="flex-1 h-px bg-slate-700/50" />
-                <span className="text-xs text-slate-500">或手动选择预设嘉宾</span>
-                <div className="flex-1 h-px bg-slate-700/50" />
-              </div>
-
-              {/* Preset guest quick-select */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {presetGuests.map((g: any) => {
-                  const sel = presetSelected.includes(g.id);
-                  return (
-                    <button key={g.id} onClick={() => togglePreset(g.id)}
-                      className={`p-2.5 rounded-xl border-2 text-left transition-all ${
-                        sel ? 'border-blue-400 bg-blue-500/10' : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
-                      }`}>
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">{g.avatar}</span>
-                        <div>
-                          <div className="text-xs font-semibold text-white">{g.name}</div>
-                          <div className="text-[10px] text-slate-400">{g.description}</div>
+          {/* Preset guests — collapsed secondary option */}
+          <div className="border-t border-slate-700/50 pt-3">
+            <button onClick={() => setShowPreset(!showPreset)}
+              className="text-xs text-slate-500 hover:text-slate-400 transition-colors">
+              {showPreset ? '▲ 收起' : '▼ 或手动选择预设嘉宾（6位固定角色）'}
+            </button>
+            {showPreset && (
+              <div className="mt-3 space-y-2">
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                  {presetGuests.map((g: any) => {
+                    const sel = presetSelected.includes(g.id);
+                    return (
+                      <button key={g.id} onClick={() => togglePreset(g.id)}
+                        className={`p-2 rounded-xl border text-left transition-all ${
+                          sel ? 'border-blue-400 bg-blue-500/10' : 'border-slate-700 bg-slate-800/40 hover:border-slate-600'
+                        }`}>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-base">{g.avatar}</span>
+                          <div>
+                            <div className="text-[11px] font-semibold text-white">{g.name}</div>
+                            <div className="text-[9px] text-slate-500">{g.description}</div>
+                          </div>
+                          {sel && <span className="ml-auto text-blue-400 text-xs">✓</span>}
                         </div>
-                        {sel && <span className="ml-auto text-blue-400 text-xs">✓</span>}
-                      </div>
-                    </button>
-                  );
-                })}
+                      </button>
+                    );
+                  })}
+                </div>
+                <button onClick={handlePresetStart} disabled={!canPresetStart}
+                  className={`w-full py-2 rounded-xl text-xs font-medium transition-all ${
+                    canPresetStart ? 'bg-blue-500/20 border border-blue-400/30 text-blue-300 hover:bg-blue-500/30' : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
+                  }`}>
+                  直接开始（{presetSelected.length}位预设嘉宾，至少3位）
+                </button>
               </div>
-              <button onClick={handlePresetStart} disabled={!canPresetStart}
-                className={`w-full py-2.5 rounded-xl text-sm font-medium transition-all ${
-                  canPresetStart ? 'bg-blue-500/20 border border-blue-400/30 text-blue-300 hover:bg-blue-500/30' : 'bg-slate-700/50 text-slate-500 cursor-not-allowed'
-                }`}>
-                直接开始（{presetSelected.length}位预设嘉宾）
-              </button>
-            </div>
-          )}
+            )}
+          </div>
 
           {/* Step: AI Generated → Select experts */}
           {step === 'select' && generatedHost && (

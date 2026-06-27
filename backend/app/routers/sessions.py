@@ -2,14 +2,13 @@
 
 import json
 import re
-from pydantic import BaseModel, Field
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.database import get_db
 from app.schemas.common import ApiResponse, PaginatedData
 from app.schemas.session import (
     SessionCreate, SessionBrief, SessionDetail, GuestBrief,
-    GeneratedGuest, GuestGenerateResponse,
+    GeneratedGuest, GuestGenerateResponse, GuestGenerateRequest,
 )
 from app.schemas.message import MessageResponse
 from app.exceptions import NotFoundException, ConflictException, ValidationException
@@ -28,21 +27,21 @@ COLORS_POOL = ["#3B82F6", "#EF4444", "#10B981", "#F59E0B", "#8B5CF6", "#EC4899",
 
 # ── Topic-based Guest Generation ──────────────────────
 
-class GuestGenerateRequest(BaseModel):
-    topic: str = Field(..., min_length=1, max_length=200)
-
 @router.post("/discussion/generate-guests", response_model=ApiResponse[GuestGenerateResponse])
 async def generate_guests(body: GuestGenerateRequest):
     """Generate a relevant host + expert lineup based on the topic."""
     llm = get_llm_service()
+    count = body.expert_count
+    colors_for_prompt = json.dumps(COLORS_POOL[:count])
+
     prompt = f"""为以下话题策划AI圆桌讨论阵容。
 
 话题：{body.topic}
 
-生成1位主持人和5-6位专家。要求：
+生成1位主持人和{count}位专家。要求：
 - 专家背景严格围绕话题展开，不同视角互补（支持/质疑/中立/跨界）
 - 每位专家：name(真实感姓名)、title(具体职业)、stance(15-25字立场)、avatar(1个相关emoji)
-- 分配不同颜色：{json.dumps(COLORS_POOL[:6])}
+- 分配不同颜色：{colors_for_prompt}
 
 JSON格式回复：
 ```json
@@ -61,9 +60,10 @@ JSON格式回复：
         data = json.loads(match.group())
 
         host = data["host"]; host["id"] = "moderator"; host.setdefault("avatar", "🎤")
+        DEFAULT_AVATARS = ["💼","🔬","📊","🎨","⚙️","🛡️"]
         experts = []
-        for i, e in enumerate(data["experts"][:6]):
-            e["id"] = f"gen_{i}"; e.setdefault("avatar", ["💼","🔬","📊","🎨","⚙️","🛡️"][i])
+        for i, e in enumerate(data["experts"][:count]):
+            e["id"] = f"gen_{i}"; e.setdefault("avatar", DEFAULT_AVATARS[i % len(DEFAULT_AVATARS)])
             experts.append(GeneratedGuest(**e))
 
         return ApiResponse(data=GuestGenerateResponse(host=GeneratedGuest(**host), experts=experts))
