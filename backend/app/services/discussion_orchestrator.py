@@ -235,12 +235,18 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
     # ── Step 2: Pick highest urgency expert ──────────────
     candidates = []
     for r in results:
-        if r and r["decision"].get("should_speak") and r["decision"].get("urgency", 0) >= 4:
-            candidates.append(r)
+        if r and r["decision"].get("should_speak") and r["decision"].get("urgency", 0) >= 3:
+            # Penalty for recently-spoken expert: reduce effective urgency
+            eff_urgency = r["decision"].get("urgency", 0)
+            if r["expert"]["id"] == last_speaker:
+                eff_urgency -= 3  # Just spoke last round → heavily penalized
+            if eff_urgency >= 3:
+                r["_eff_urgency"] = eff_urgency
+                candidates.append(r)
 
-    # Sort by urgency (descending), take top 2
-    candidates.sort(key=lambda x: x["decision"].get("urgency", 0), reverse=True)
-    speakers = candidates[:2]  # Up to 2 speakers per round
+    # Sort by effective urgency (descending), take only 1 speaker
+    candidates.sort(key=lambda x: x.get("_eff_urgency", x["decision"].get("urgency", 0)), reverse=True)
+    speakers = candidates[:1]  # Only 1 speaker per round — natural turn-taking
 
     # Update statuses
     for r in (results or []):
