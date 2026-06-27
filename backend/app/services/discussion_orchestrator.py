@@ -501,6 +501,53 @@ async def host_summary_node(state: DiscussionState, config: RunnableConfig | Non
 
 
 # ═══════════════════════════════════════════════════════
+# Node: CONSENSUS_CHECK — analyze transcript, update state
+# ═══════════════════════════════════════════════════════
+
+async def consensus_check_node(state: DiscussionState, config: RunnableConfig | None = None) -> dict:
+    """Dedicated node: runs after every round, updates consensus/divergence."""
+    llm = get_llm_service()
+    topic = state["topic"]
+    all_msgs = list(state["messages"])
+    existing_c = list(state.get("consensus_points", []))
+    existing_d = list(state.get("divergence_points", []))
+
+    sse_events = []
+    new_c = []
+    new_d = []
+
+    if len(all_msgs) >= 3:  # Need minimum context
+        try:
+            check_prompt = build_consensus_check_prompt(
+                topic, format_transcript(all_msgs, last_n=15),
+                existing_c, existing_d,
+            )
+            raw = await llm.generate(
+                system_prompt="你是专业讨论分析师。只用JSON回复。",
+                user_message=check_prompt, temperature=0.3, max_tokens=300,
+            )
+            result = _parse_json(raw, {"new_consensus": [], "new_divergence": []})
+            new_c = result.get("new_consensus", [])
+            new_d = result.get("new_divergence", [])
+
+            if new_c or new_d:
+                sse_events.append(_sse("consensus_update", {
+                    "new_consensus": new_c,
+                    "new_divergence": new_d,
+                    "all_consensus": existing_c + new_c,
+                    "all_divergence": existing_d + new_d,
+                }))
+        except Exception:
+            pass
+
+    return {
+        "consensus_points": new_c,
+        "divergence_points": new_d,
+        "sse_events": sse_events,
+    }
+
+
+# ═══════════════════════════════════════════════════════
 # Routing
 # ═══════════════════════════════════════════════════════
 
@@ -513,9 +560,14 @@ def after_host_intro(state: DiscussionState) -> str:
 def after_autonomous(state: DiscussionState) -> str:
     if state.get("error"):
         return "END"
+    return "consensus_check"  # Always go through consensus check
+
+def after_consensus(state: DiscussionState) -> str:
+    if state.get("error"):
+        return "END"
     if state["current_round"] >= state["total_rounds"]:
         return "host_summary"
-    return "autonomous_discussion"
+    return "autonomous_discussion"  # Continue discussion
 
 
 # ═══════════════════════════════════════════════════════
@@ -528,13 +580,19 @@ def build_discussion_graph() -> StateGraph:
     builder.add_node("init", init_node)
     builder.add_node("host_intro", host_intro_node)
     builder.add_node("autonomous_discussion", autonomous_discussion_node)
+    builder.add_node("consensus_check", consensus_check_node)
     builder.add_node("host_summary", host_summary_node)
 
     builder.set_entry_point("init")
 
     builder.add_conditional_edges("init", after_init, {"host_intro": "host_intro", "END": END})
-    builder.add_conditional_edges("host_intro", after_host_intro, {"autonomous_discussion": "autonomous_discussion", "END": END})
+    builder.add_conditional_edges("host_intro", after_host_intro, {
+        "autonomous_discussion": "autonomous_discussion", "END": END,
+    })
     builder.add_conditional_edges("autonomous_discussion", after_autonomous, {
+        "consensus_check": "consensus_check", "END": END,
+    })
+    builder.add_conditional_edges("consensus_check", after_consensus, {
         "autonomous_discussion": "autonomous_discussion",
         "host_summary": "host_summary",
         "END": END,
