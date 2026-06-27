@@ -316,6 +316,33 @@ async def autonomous_discussion_node(state: DiscussionState, config: RunnableCon
             status[expert["id"]] = {"state": "idle", "focus": "已发言，继续聆听"}
             sse_events.append(_sse("expert_status", {"status": dict(status)}))
 
+        # ── Host proactively connects ideas every 5 rounds ──
+        if (state["current_round"] + 1) % 5 == 0 and len(all_msgs + all_md) >= 3:
+            try:
+                connect_text = await llm.generate(
+                    system_prompt=HOST_SYSTEM_PROMPT,
+                    user_message=build_connect_prompt(
+                        topic, all_msgs + all_md,
+                        list(state.get("consensus_points", [])),
+                        list(state.get("divergence_points", [])),
+                    ),
+                    temperature=0.7, max_tokens=200,
+                )
+                if connect_text and connect_text.strip():
+                    status["__host__"] = {"state": "speaking", "focus": "串联观点中..."}
+                    sse_events.append(_sse("expert_status", {"status": dict(status)}))
+                    sse_events.append(_sse("moderator_connect", {
+                        "id": f"host-connect-{round_num}",
+                        "session_id": sid, "phase": "free_discussion",
+                        "round": round_num + 1,
+                        "speaker_id": host["id"], "speaker_name": host["name"],
+                        "content": connect_text.strip(),
+                    }))
+                    status.pop("__host__", None)
+                    sse_events.append(_sse("expert_status", {"status": dict(status)}))
+            except Exception:
+                pass
+
         # ── Consensus check every ~3 rounds ──────────
         new_consensus = []
         new_divergence = []
