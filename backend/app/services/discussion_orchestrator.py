@@ -544,7 +544,7 @@ async def consensus_check_node(state: DiscussionState, config: RunnableConfig | 
     new_c = []
     new_d = []
 
-    if len(all_msgs) >= 3:  # Need minimum context
+    if len(all_msgs) >= 2:  # Trigger earlier (was >= 3)
         try:
             check_prompt = build_consensus_check_prompt(
                 topic, format_transcript(all_msgs, last_n=15),
@@ -557,16 +557,27 @@ async def consensus_check_node(state: DiscussionState, config: RunnableConfig | 
             result = _parse_json(raw, {"new_consensus": [], "new_divergence": []})
             new_c = result.get("new_consensus", [])
             new_d = result.get("new_divergence", [])
-
-            if new_c or new_d:
-                sse_events.append(_sse("consensus_update", {
-                    "new_consensus": new_c,
-                    "new_divergence": new_d,
-                    "all_consensus": existing_c + new_c,
-                    "all_divergence": existing_d + new_d,
-                }))
         except Exception:
-            pass
+            import traceback as _tb
+            print(f"[CONSENSUS_CHECK] LLM failed at round {state['current_round']}:")
+            _tb.print_exc()
+            # Fallback: extract keywords from last 2 messages
+            recent = all_msgs[-2:] if len(all_msgs) >= 2 else all_msgs
+            snippets = [m.get("content", "")[:20] + "..." for m in recent if m.get("content")]
+            if snippets and not existing_c:
+                new_c = [f"讨论焦点: {snippets[0]}"]
+            print(f"[CONSENSUS_CHECK] Fallback: new_c={new_c}")
+
+    all_c = existing_c + new_c
+    all_d = existing_d + new_d
+    if new_c or new_d:
+        sse_events.append(_sse("consensus_update", {
+            "round": state["current_round"],
+            "new_consensus": new_c,
+            "new_divergence": new_d,
+            "all_consensus": all_c,
+            "all_divergence": all_d,
+        }))
 
     return {
         "consensus_points": new_c,
