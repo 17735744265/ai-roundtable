@@ -11,3 +11,4 @@ myenv/
 *.egg-info/
 .DS_Store
 1.py
+.vscode/
